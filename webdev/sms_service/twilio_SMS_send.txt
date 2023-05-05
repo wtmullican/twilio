@@ -1,0 +1,51 @@
+DbugTitle is string = "TwilioClass - SMS_Send"
+
+Response_JSON is string = ""
+
+client_credentials is string = pRequest.username + ":" + pRequest.userpass
+
+//StatusCallbackURL is string = "https://tpweb.tcstire.com/tpcomm/v1/"+ NoSpace(pRequest.tcs_serial) +"/twilio/smsStatusCallback"
+StatusCallbackURL is string = "https://tpweb.tcstire.com/tpcomm/v1/1857/twilio/smsStatusCallback"
+
+Restcall is httpRequest
+
+Restcall..URL = "https://api.twilio.com/2010-04-01/Accounts/[%pRequest.username%]/Messages.json"
+Restcall.UserAgent = pRequest.UserAgent
+Restcall..ContentType = "application/x-www-form-urlencoded"  
+Restcall..Header["Authorization"] = "Basic "+ Encode(client_credentials,encodeBASE64URL) 
+// Notice we are adding parameter/value pairs separated by an "&"
+//Restcall..Content = "From=[%pRequest.phoneFrom%]&To=[%pRequest.phoneTo%]&Body=[%pRequest.body%]&StatusCallback=[%StatusCallbackURL%]"
+Restcall..Content = "From=[%pRequest.phoneFrom%]&To=[%pRequest.phoneTo%]&Body=[%pRequest.body%]"
+Restcall..Method = httpPost
+
+Resp is httpResponse = HTTPSend(Restcall)
+
+strReturn_json is Structure
+	ProductID is string	
+	TP_msgID is string
+	TP_transID is string
+	MsgType is string
+	Response is string
+	provMsgId is string
+END
+
+recReturn_json is strReturn_json
+recReturn_json.ProductID = 20
+recReturn_json.TP_msgID = pRequest.msgID // relates to dbo.Communications.COM_SysID
+recReturn_json.TP_transID = pRequest.transID // relates to dbo.Transactions.TRA_TransID || dbo.Communications.COM_TransID
+
+vRespContent is Variant = JSONToVariant(Resp..Content)
+IF Resp.StatusCode = "200" OR  Resp.StatusCode = "201"THEN	
+	IF vRespContent.status = "queued" THEN
+		recReturn_json.MsgType = "MsgConfirm"
+	ELSE
+		recReturn_json.MsgType = "MsgFailed"		
+	END
+	recReturn_json.Response = Resp..Content
+	recReturn_json.provMsgId = vRespContent.sid // relates to dbo.Communications.COM_ConfirmationNo
+ELSE
+	recReturn_json.MsgType = "MsgFailed"
+	recReturn_json.Response = Resp..Content
+END
+
+RESULT  VariantToJSON(recReturn_json)
